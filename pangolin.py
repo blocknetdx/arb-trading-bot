@@ -489,7 +489,7 @@ try:
                 if recipient is None:
                     recipient = self.address
                 amount_out_min = int(
-                    (1 - self.max_slippage)
+                    (1 - float(self.max_slippage))
                     * self.get_avax_token_input_price(output_token, qty)
                 )
                 return self._build_and_send_tx(gwei, my_address,my_pk,
@@ -568,7 +568,7 @@ try:
                 if recipient is None:
                     recipient = self.address
                 min_tokens_bought = int(
-                    (1 - self.max_slippage)
+                    (1 - float(self.max_slippage))
                     * self.get_token_token_input_price(input_token, output_token, qty)
                 )
                 return self._build_and_send_tx(gwei, my_address,my_pk,
@@ -830,7 +830,7 @@ try:
             For sell orders (exact input), the amount bought (output) is calculated.
             Similar to _calculate_max_input_token, but for an exact input swap.
             """
-            # TokenA (ERC20) to ETH conversion
+            # TokenA (ERC20) to AVAX conversion
             inputAmountA = qty
             inputReserveA = self.get_ex_token_balance(input_token)
             outputReserveA = self.get_ex_avax_balance(input_token)
@@ -851,54 +851,6 @@ try:
             outputAmountB = numeratorB / denominatorB
 
             return int(outputAmountB), int(1.2 * outputAmountA)
-
-        # ------ Test utilities ------------------------------------------------------------
-
-        def _buy_test_assets(self) -> None:
-            """
-            Buys some BAT and DAI.
-            Used in testing.
-            """
-            ONE_ETH = 1 * 10 ** 18
-            TEST_AMT = int(0.1 * ONE_ETH)
-            tokens = self._get_token_addresses()
-
-            for token_name in ["BAT", "DAI"]:
-                token_addr = tokens[token_name.lower()]
-                price = self.get_avax_token_output_price(_str_to_addr(token_addr), TEST_AMT)
-                logger.info(f"Cost of {TEST_AMT} {token_name}: {price}")
-                logger.info("Buying...")
-                tx = self.make_trade_output(
-                    tokens["eth"], tokens[token_name.lower()], TEST_AMT
-                )
-                self.w3.eth.waitForTransactionReceipt(tx)
-
-        def _get_token_addresses(self) -> Dict[str, str]:
-            """
-            Returns a dict with addresses for tokens for the current net.
-            Used in testing.
-            """
-            netid = int(self.w3.net.version)
-            netname = _netid_to_name[netid]
-            if netname == "mainnet":
-                return {
-                    "eth": "0x0000000000000000000000000000000000000000",
-                    "bat": Web3.toChecksumAddress(
-                        "0x0D8775F648430679A709E98d2b0Cb6250d2887EF"
-                    ),
-                    "dai": Web3.toChecksumAddress(
-                        "0x6b175474e89094c44da98b954eedeac495271d0f"
-                    ),
-                }
-            elif netname == "rinkeby":
-                return {
-                    "eth": "0x0000000000000000000000000000000000000000",
-                    "bat": "0xDA5B056Cfb861282B4b59d29c9B395bcC238D29B",
-                    "dai": "0x2448eE2641d78CC42D7AD76498917359D961A783",
-                }
-            else:
-                raise Exception(f"Unknown net '{netname}'")
-
 
 except SyntaxError as err:
     traceback.print_exc()

@@ -18,5 +18,4 @@ print(price/100)
 
 gwei = types.Wei(Web3.toWei(int(configfile.maxgweinumber), "gwei"))
 
-
-pang.make_trade(aablockContract, usdtContract, 1, gwei, my_address, my_pk)
+pang.make_trade(usdtContract, aablockContract, 1, gwei, my_address, my_pk)

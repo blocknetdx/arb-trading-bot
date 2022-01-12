@@ -12,7 +12,7 @@ maincoinoption='BNB'
 mcotoseeassell='10'
 
 diffdepositaddress=''
-maxgweinumber='5'
+maxgweinumber='25'
 diffdeposit='0'
 maxgwei='1'
 secondswaitaftertrade='80'
