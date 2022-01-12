@@ -1,30 +1,22 @@
-from web3 import Web3
 from pangolin import Pangolin
-from contracts import (
-        aablockContract,
-        wavaxContract,
-        usdtContract,
-        pangolinContract)
+from contracts import (aablockContract,
+                       usdtContract)
+from web3 import Web3, types
+import configfile
 
 
-def main():
+my_address = "0xa3786dd1e130197EA72042b8821207e20aeFeD90"
+my_pk = "0000000000000000000000000000000000000000000000000000000000000000"
 
-    pang = Pangolin('https://api.avax.network/ext/bc/C/rpc')
-    price_wavax_aablock = pang.price(1, aablockContract, wavaxContract)
-    price_wavax_usdt = pang.price(1, usdtContract, wavaxContract)
-    aablock = 1/(price_wavax_aablock[1]/10**10)
-    usdt = 1/(price_wavax_usdt[1]/10**12)
+provider = "https://api.avax.network/ext/bc/C/rpc"
 
-    print(aablock, 'aablock per wawax')
-    print(usdt, 'usdt per wavax')
-    print(aablock/usdt, 'aablock per usdt')
+pang = Pangolin(my_address, my_pk, provider, version=2, max_slippage='0.03')
 
-    try:
-        pang.swap(aablockContract, wavaxContract, 1, 160,
-                  1642327952, Web3.toChecksumAddress("0xffc53c9d889b4c0bfc1ba7b9e253c615300d9ffd"))
-    except Exception as e:
-        print(e)
+price = pang.get_token_token_input_price(usdtContract, aablockContract, 1)
+print(price/100)
 
 
-if __name__ == '__main__':
-    main()
+gwei = types.Wei(Web3.toWei(int(configfile.maxgweinumber), "gwei"))
+
+
+pang.make_trade(aablockContract, usdtContract, 1, gwei, my_address, my_pk)
