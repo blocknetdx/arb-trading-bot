@@ -1,0 +1,14 @@
+{
+  "api_info": [
+    {
+      "exchange": "exchange_name",
+      "api": "api_key",
+      "secret": "api_secret"
+    },
+    {
+      "exchange": "bittrex",
+      "api": "",
+      "secret": ""
+    }
+  ]
+}

@@ -120,7 +120,7 @@ try:
         assert _addr_to_str(a)
 
 
-    _netid_to_name = {1: "mainnet"}
+    _netid_to_name = {43114: "mainnet"}
 
 
     class Pangolin:
