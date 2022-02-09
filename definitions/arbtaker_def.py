@@ -50,7 +50,6 @@ class Coin:
             max_taker_amount = settings.max_size[taker_o.name]
         else:
             max_taker_amount = -1
-
         for order in orderbook:
             order_status = xb.dx_call_getorderstatus(order[2])
             if 'status' in order_status and "exact" in order_status['order_type'] and \
@@ -182,13 +181,21 @@ class Dex:
 
 class Amm:
     def __init__(self):
+        self.symbol_s1 = None
+        self.symbol_s2 = None
+        self.amount = -1
         self.balance = 0
+        self.side = ""
 
     def set_balance(self, balance):
         if (isinstance(balance, float) or isinstance(balance, int)) and balance >= 0:
             self.balance = balance
         else:
             self.balance = None
+
+    def reset_side(self):
+        self.side = ""
+
 
 def main_init_coins_list():
     coins_list = []
@@ -312,6 +319,32 @@ def calc_cex_path(maker_o, taker_o):
     maker_o.cex.symbol_s2 = ccxt_symbol2
 
 
+def calc_pang_path(maker_o, taker_o):
+    pang_token1 = None
+    pang_token2 = None
+    pang_token3 = None
+    if "BTC" not in maker_o.name and "BTC" not in taker_o.name:
+        pang_token1 = maker_o.name
+        pang_token2 = "BTC"
+        pang_token3 = taker_o.name
+    elif "BTC" in maker_o.name and "BTC" not in taker_o.name:
+        pang_token1 = taker_o.name
+        pang_token2 = maker_o.name
+    elif "BTC" not in maker_o.name and "BTC" in taker_o.name:
+        pang_token1 = maker_o.name
+        pang_token2 = taker_o.name
+
+    print(pang_token1, pang_token2, pang_token3)
+    if pang_token3:
+        pang_symbol1 = pang_token1 + "/" + pang_token2
+        pang_symbol2 = pang_token3 + "/" + pang_token2
+    else:
+        pang_symbol1 = pang_token1 + "/" + pang_token2
+        pang_symbol2 = None
+    maker_o.amm.symbol_s1 = pang_symbol1
+    maker_o.amm.symbol_s2 = pang_symbol2
+
+
 def check_valid_symbols(cex_symbol1=None, cex_symbol2=None, ccxt_o=None):
     if cex_symbol1 and cex_symbol1 not in ccxt_o.symbols:
         print(ccxt_o.name, "symbol not supported:", cex_symbol1)
@@ -359,6 +392,15 @@ def calc_cex_coin1_depth_price(side, cex_symbol, orderbook, qty, ccxt_o):
                 break
         if quantity == 0 and final_price_cex_book > 0:
             return executed_tobtc, final_price_cex_book
+
+
+def calc_pang_price(pang_symbol, qty, pang_o):
+    pang_tokens = pang_symbol.split('/')
+    contract_1 = contracts[tokens[pang_tokens[0].lower()]]
+    contract_2 = contracts[tokens[pang_tokens[1].lower()]]
+    price = pang_o.get_token_token_output_price(contract_1, contract_2, int(1))
+    amount = qty/price
+    return amount
 
 
 def get_coin_btc_price(orderbook):
@@ -601,6 +643,67 @@ def calc_arb_triway(maker_o, taker_o, coins_list, ccxt_o):
     return False
 
 
+def calc_arb_dex_pang(maker_o, taker_o, coins_list, pang_o):
+    print(f"{' ' * 10}{'XBRIDGE':<19}{': ' + maker_o.name + '/' + taker_o.name}")
+    calc_pang_path(maker_o, taker_o)
+    print(f"{' ' * 10}{'Pang hop':<19}{': ' + maker_o.amm.symbol_s1}")
+    btc_o = next(x for x in coins_list if x.name == 'BTC')
+
+    if maker_o.dex.asks_ob:
+        maker_o.amm.reset_side()
+        # i buy block on dx, sell block on pang
+        maker_o.dex.side = "BUY"
+        maker_o.amm.side = "SELL"
+        maker_o.dx_select_order(maker_o=maker_o,
+                                taker_o=taker_o)
+        if maker_o.dex.maker_amount != -1:
+            maker_o.amm.amount = calc_pang_price(pang_symbol=maker_o.amm.symbol_s1, qty=maker_o.dex.maker_amount, pang_o=pang_o)
+            if maker_o.amm.amount:
+                profit_percent = maker_o.amm.amount / maker_o.dex.taker_amount  # 1=100%
+                msg3_pr = f"{'':<12}PROFIT : {'{:.8f}'.format(maker_o.amm.amount):<10} - {'{:.8f}'.format(maker_o.dex.taker_amount):<10} = {'{:.8f}'.format(maker_o.amm.amount - maker_o.dex.taker_amount):<10} = {'{:.2f}'.format(profit_percent * 100 - 100)} %"
+                msg1_dx = f"{' ' * 10}{'Xbridge(' + maker_o.name + '/' + taker_o.name + ')':<19}: {'BUY':<5}{'{:.8f}'.format(maker_o.dex.maker_amount):<13} {maker_o.name:<6}{'SELL':<5}{'{:.8f}'.format(maker_o.dex.taker_amount):<11} {taker_o.name:<6}"  # {'convert to cex price ' + '{:.8f}'.format(maker_o.dex.taker_amount * coin2_cex_btcrate)}"
+                msg2_s1 = f"{' ' * 10}{ '' + '(' + maker_o.amm.symbol_s1 + ')':<19}: {'SELL':<5}{'{:.8f}'.format(maker_o.dex.maker_amount):<13} {maker_o.name:<6}{'BUY':<5}{'{:.8f}'.format(maker_o.amm.amount):<11} {'BTC':<4}"
+                print(msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
+                # TX FEE PROTECTION WHEN BUYING COIN1 WITH BTC
+                if 'BTC' in taker_o.name and settings.min_profit < 1.1:
+                    min_profit = 1.1
+                else:
+                    min_profit = settings.min_profit
+
+                if profit_percent > min_profit:
+                    taker_logger.critical("\n" + msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
+                    print("profitable ARB!")
+                    return True
+                else:
+                    maker_o.amm.reset_side()
+    else:
+        print(" " * 3, "Dex BUY No order on book")
+    if maker_o.dex.bids_ob:
+        # i sell block on dx, buy block on cex
+        maker_o.dex.side = "SELL"
+        maker_o.amm.side = "BUY"
+        maker_o.dx_select_order(maker_o=maker_o,
+                                taker_o=taker_o)
+        if maker_o.dex.maker_amount != -1:
+            maker_o.amm.amount = calc_pang_price(pang_symbol=maker_o.amm.symbol_s1, qty=maker_o.dex.maker_amount,
+                                                pang_o=pang_o)
+            if maker_o.amm.amount:
+                profit_percent = maker_o.dex.taker_amount / maker_o.amm.amount
+                msg1_dx = f"{' ' * 10}{'Xbridge(' + maker_o.name + '/' + taker_o.name + ')':<19}: {'SELL':<5}{'{:.8f}'.format(maker_o.dex.maker_amount):<13} {maker_o.name:<6}{'BUY':<5}{'{:.8f}'.format(maker_o.dex.taker_amount):<11} {taker_o.name:<6}"
+                msg2_s1 = f"{' ' * 10}{'' + '(' + maker_o.amm.symbol_s1 + ')':<19}: {'BUY':<5}{'{:.8f}'.format(maker_o.dex.maker_amount):<13} {maker_o.name:<6}{'SELL':<5}{'{:.8f}'.format(maker_o.amm.amount):<11} {'BTC':<4}"
+                msg3_pr = f"{' ' * 10}{'':<12}PROFIT : {'{:.8f}'.format(maker_o.dex.taker_amount):<10} - {'{:.8f}'.format(maker_o.amm.amount):<10} = {'{:.8f}'.format(maker_o.dex.taker_amount - maker_o.amm.amount):<10} = {'{:.2f}'.format(profit_percent * 100 - 100)} %"
+                print(msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
+                if profit_percent > settings.min_profit:
+                    taker_logger.critical("\n" + msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
+                    print("profitable ARB!")
+                    return True
+                else:
+                    maker_o.amm.reset_side()
+    else:
+        print(" " * 3, "Dex SELL No order on book")
+    return False
+
+
 def dx_set_addresses(coins_list):
     for coin in coins_list:
         if coin.dex_enabled:
@@ -804,6 +907,65 @@ def execute_trade(maker_o, taker_o, ccxt_o):
         maker_o.dex.order_blacklist.append(maker_o.dex.order[2])
 
 
+def execute_trade_pang(maker_o, taker_o, pang_o):
+    from_add = ""
+    to_add = ""
+    if "BUY" in maker_o.dex.side:
+        from_add = taker_o.dex.active_address
+        to_add = maker_o.dex.active_address
+    if "SELL" in maker_o.dex.side:
+        from_add = maker_o.dex.active_address
+        to_add = taker_o.dex.active_address
+    if not settings.dry_mode:
+        mess = "dxtakerorder(" + maker_o.dex.order[2] + ", " + from_add + ', ' + to_add + ")"
+        taker_logger.critical(mess)
+        print(mess)
+        xb.dx_call_takeorder(maker_o.dex.order[2], from_add, to_add)
+        dx_done = dx_check_inprogress_order(maker_o)
+        if dx_done == 1:
+            if "SELL" in maker_o.amm.side:
+                new_price = maker_o.amm.amount * (1 - settings.error_rate_mod)
+                maker_o.amm.amount = new_price
+            elif "BUY" in maker_o.amm.side:
+                new_price = maker_o.amm.amount  * (1 + settings.error_rate_mod)
+                maker_o.amm.amount  = new_price
+            taker_logger.critical(mess)
+            print(mess)
+            pang_done = 1 # TODO
+            if pang_done == 1 and not maker_o.cex.symbol_s2:
+                return True
+            else:
+                print("error with pang")
+                exit()
+        elif dx_done == -2:
+            maker_o.dex.order_blacklist.append(maker_o.dex.order[2])
+            mess = "error with DX, order was still 'open' after taking it, cancelling pang execution \nblacklist " + \
+                   maker_o.dex.order[2]
+            print(mess)
+            taker_logger.critical(mess)
+            return False
+        else:
+            print("error with DX, cancelling pang execution")
+            exit()
+    else:
+        # DRY MODE
+        mess3 = ""
+        mess1 = "dxtakerorder(" + maker_o.dex.order[2] + ", " + from_add + ", " + to_add + "), dry_mode: " + str(
+            settings.dry_mode)
+        print(mess1)
+        if "SELL" in maker_o.amm.side:
+            new_price = maker_o.amm.amount * (1 - settings.error_rate_mod)
+            print(maker_o.amm.amount, new_price)
+            maker_o.amm.amount = new_price
+        elif "BUY" in maker_o.amm.amount:
+            new_price = maker_o.amm.amount * (1 + settings.error_rate_mod)
+            print(maker_o.amm.amount, new_price)
+            maker_o.amm.amount = new_price
+        else:
+            taker_logger.critical("ARB ACTION:\n" + mess1 + "\n" )
+        maker_o.dex.order_blacklist.append(maker_o.dex.order[2])
+
+
 def print_balances(coins_list, count):
     bal_msg = f"{'COIN_NAME':<10}| {'DEX_BAL':<14}| {'CEX_BAL':<14}| {'PANG_BAL':<14}| {'TOTAL_BAL':<14}"
     print(bal_msg)
@@ -864,6 +1026,12 @@ def main_arb_taker_dx_ccxt():
                     if execute_trade(maker_o, taker_o, ccxt_o=ccxt_cex) is True:
                         print("SUCCESS!")
                         time.sleep(5)
+                if settings.pangolin_enabled:
+                    if calc_arb_dex_pang(maker_o, taker_o, coins_list, pangolin_dx) is True:
+                        if execute_trade_pang(maker_o, taker_o, pangolin_dx):
+                            print("SUCCESS!")
+                            time.sleep(5)
+                        print('TRADE')
             else:
                 # CALC ARB 2 HOP COIN2 TO "BTC"
                 if calc_arb_triway(maker_o, taker_o, coins_list, ccxt_cex) is True:

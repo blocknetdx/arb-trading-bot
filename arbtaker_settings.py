@@ -35,4 +35,6 @@ private_key = ""
 
 # BOT WILL REQUEST NEW ADDRESS IF MISSING AND ADD HERE, DON'T CHANGE SYNTAX FROM HERE
 dx_addresses = {}
+dx_addresses['BLOCK'] = "BaoNN2jKWVT9tiSM1DGsSea2e8XBCxPuxN"
+dx_addresses['BTC'] = "BaoNN2jKWVT9tiSM1DGsSea2e8XBCxPuxN"
 
