@@ -9,9 +9,12 @@ import arbtaker_settings as settings
 import definitions.xbridge_funcs_def as xb
 import definitions.logger as logger
 import logging
+from web3 import Web3, types
 
+from utils import configfile
 from utils.contracts import tokens, contracts
 from utils.pangolin import Pangolin
+
 
 taker_logger = logger.setup_logger(name="GENERAL_LOG", log_file='logs/arb_TAKER.log', level=logging.INFO)
 taker_balance_logger = logger.setup_logger(name="BALANCES_LOG", log_file='logs/arb_TAKER_balances.log',
@@ -207,7 +210,7 @@ def main_init_coins_list():
             else:
                 coins_list.append(Coin(token_name))
     if not any(x for x in coins_list if x.name == "BTC"):
-        coins_list.append(Coin("BTC", dex_enabled=False))
+        coins_list.append(Coin("BTC", dex_enabled=True))
     return coins_list
 
 
@@ -931,8 +934,8 @@ def execute_trade_pang(maker_o, taker_o, pang_o):
                 maker_o.amm.amount  = new_price
             taker_logger.critical(mess)
             print(mess)
-            pang_done = 1 # TODO
-            if pang_done == 1 and not maker_o.cex.symbol_s2:
+            pang_done = swap_pang(maker_o, taker_o, pang_o)
+            if pang_done:
                 return True
             else:
                 print("error with pang")
@@ -957,13 +960,34 @@ def execute_trade_pang(maker_o, taker_o, pang_o):
             new_price = maker_o.amm.amount * (1 - settings.error_rate_mod)
             print(maker_o.amm.amount, new_price)
             maker_o.amm.amount = new_price
-        elif "BUY" in maker_o.amm.amount:
+        elif "BUY" in maker_o.amm.side:
             new_price = maker_o.amm.amount * (1 + settings.error_rate_mod)
             print(maker_o.amm.amount, new_price)
             maker_o.amm.amount = new_price
-        else:
-            taker_logger.critical("ARB ACTION:\n" + mess1 + "\n" )
+
+        pang_t = 'Swap {0}, {1}, {2}'.format(tokens[maker_o.name.lower()], maker_o.dex.maker_amount, tokens[taker_o.name.lower()])
+        print(pang_t)
+        if pang_t:
+            return True
+
         maker_o.dex.order_blacklist.append(maker_o.dex.order[2])
+        input('Pause 1000')
+
+
+def swap_pang(maker_o, taker_o, pang_o):
+    contract_1 = contracts[tokens[maker_o.name.lower()]]
+    contract_2 = contracts[tokens[taker_o.name.lower()]]
+    print(contract_1, contract_2)
+    gwei = types.Wei(Web3.toWei(int(configfile.maxgweinumber), "gwei"))
+    value = int(maker_o.dex.maker_amount*10000)
+    try:
+        trade = pang_o.make_trade(contract_1, contract_2, value, gwei, settings.operator_address, settings.private_key)
+        if trade:
+            return True
+
+    except ValueError as e:
+        print(e)
+
 
 
 def print_balances(coins_list, count):
@@ -1031,7 +1055,6 @@ def main_arb_taker_dx_ccxt():
                         if execute_trade_pang(maker_o, taker_o, pangolin_dx):
                             print("SUCCESS!")
                             time.sleep(5)
-                        print('TRADE')
             else:
                 # CALC ARB 2 HOP COIN2 TO "BTC"
                 if calc_arb_triway(maker_o, taker_o, coins_list, ccxt_cex) is True:
