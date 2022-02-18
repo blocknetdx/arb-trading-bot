@@ -27,11 +27,12 @@ min_size = {}
 min_size['BTC'] = 0.0005  # NEEDED, CEX MINSIZE
 
 # PANGOLIN CONFIGURATION
-pangolin_enabled = True
+pangolin_enabled = False
 provider = "https://api.avax.network/ext/bc/C/rpc"
 operator_address = ""
 private_key = ""
 
 
 # BOT WILL REQUEST NEW ADDRESS IF MISSING AND ADD HERE, DON'T CHANGE SYNTAX FROM HERE
+dx_addresses = {}
 

@@ -715,9 +715,12 @@ def dx_set_addresses(coins_list):
             else:
                 result = xb.dx_call_getnewtokenadress(coin.name)
                 print(result)
-                coin.dex.active_address = result[0]
-                dx_settings_save_new_address(coin)
-
+                if result:
+                    coin.dex.active_address = result[0]
+                    dx_settings_save_new_address(coin)
+                else:
+                    print('No token addresses, no data from Xbridge')
+                    exit()
 
 def dx_settings_save_new_address(coin):
     filename = "arbtaker_settings.py"

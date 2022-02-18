@@ -2,3 +2,4 @@ requests
 Flask
 python-dateutil
 ccxt
+web3
