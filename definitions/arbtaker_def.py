@@ -20,6 +20,8 @@ taker_logger = logger.setup_logger(name="GENERAL_LOG", log_file='logs/arb_TAKER.
 taker_balance_logger = logger.setup_logger(name="BALANCES_LOG", log_file='logs/arb_TAKER_balances.log',
                                            level=logging.INFO)
 
+pangolin_logger = logger.setup_logger(name="PANGOLIN_LOG", log_file='logs/pangolin.log',
+                                           level=logging.INFO)
 
 class Coin:
     def __init__(self, coin_name, dex_enabled=True):
@@ -210,7 +212,7 @@ def main_init_coins_list():
             else:
                 coins_list.append(Coin(token_name))
     if not any(x for x in coins_list if x.name == "BTC"):
-        coins_list.append(Coin("BTC", dex_enabled=True))
+        coins_list.append(Coin("BTC", dex_enabled=False))
     return coins_list
 
 
@@ -505,12 +507,12 @@ def calc_arb_direct(maker_o, taker_o, coins_list, ccxt_o):
                 msg2_s1 = f"{' ' * 10}{ccxt_o.name + '(' + maker_o.cex.symbol_s1 + ')':<19}: {'SELL':<5}{'{:.8f}'.format(maker_o.dex.maker_amount):<13} {maker_o.name:<6}{'BUY':<5}{'{:.8f}'.format(maker_o.cex.executed_tobtc_s1):<11} {'BTC':<4}{'AVG_PRICE:':<11}{'{:.8f}'.format(maker_o.cex.average_price_s1)}"
                 print(msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
                 # TX FEE PROTECTION WHEN BUYING COIN1 WITH BTC
-                if 'BTC' in taker_o.name and settings.min_profit < 1.1:
+                if 'BTC' in taker_o.name and settings.min_profit < 1.1 and not settings.dry_mode:
                     min_profit = 1.1
                 else:
                     min_profit = settings.min_profit
 
-                if profit_percent > min_profit:
+                if profit_percent > min_profit + 1:
                     taker_logger.critical("\n" + msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
                     print("profitable ARB!")
                     return True
@@ -538,7 +540,7 @@ def calc_arb_direct(maker_o, taker_o, coins_list, ccxt_o):
                 msg2_s1 = f"{' ' * 10}{ccxt_o.name + '(' + maker_o.cex.symbol_s1 + ')':<19}: {'BUY':<5}{'{:.8f}'.format(maker_o.dex.maker_amount):<13} {maker_o.name:<6}{'SELL':<5}{'{:.8f}'.format(maker_o.cex.executed_tobtc_s1):<11} {'BTC':<4}{'AVG_PRICE:':<11}{'{:.8f}'.format(maker_o.cex.average_price_s1)}"
                 msg3_pr = f"{' ' * 10}{'':<12}PROFIT : {'{:.8f}'.format(maker_o.dex.taker_amount):<10} - {'{:.8f}'.format(maker_o.cex.executed_tobtc_s1):<10} = {'{:.8f}'.format(maker_o.dex.taker_amount - maker_o.cex.executed_tobtc_s1):<10} = {'{:.2f}'.format(profit_percent * 100 - 100)} %"
                 print(msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
-                if profit_percent > settings.min_profit:
+                if profit_percent > settings.min_profit + 1:
                     taker_logger.critical("\n" + msg1_dx + "\n" + msg2_s1 + "\n" + msg3_pr)
                     print("profitable ARB!")
                     return True
@@ -595,7 +597,7 @@ def calc_arb_triway(maker_o, taker_o, coins_list, ccxt_o):
                     profit_percent = maker_o.cex.executed_tobtc_s1 / maker_o.cex.executed_tobtc_s2  # 1=100%
                     msg4_pr = f"{'':<12}PROFIT : {'{:.8f}'.format(maker_o.cex.executed_tobtc_s1):<10} - {'{:.8f}'.format(maker_o.cex.executed_tobtc_s2):<10} = {'{:.8f}'.format(maker_o.cex.executed_tobtc_s1 - maker_o.cex.executed_tobtc_s2):<10} = {'{:.2f}'.format(profit_percent * 100 - 100)} %"
                     print(msg1_dx + "\n" + msg2_s1 + "\n" + msg3_s2 + "\n" + msg4_pr)
-                    if profit_percent > settings.min_profit:
+                    if profit_percent > settings.min_profit + 1:
                         taker_logger.critical("\n" + msg1_dx + "\n" + msg2_s1 + "\n" + msg3_s2 + "\n" + msg4_pr)
                         print("profitable ARB!")
                         return True
@@ -635,7 +637,7 @@ def calc_arb_triway(maker_o, taker_o, coins_list, ccxt_o):
                     profit_percent = maker_o.cex.executed_tobtc_s2 / maker_o.cex.executed_tobtc_s1
                     msg4_pr = f"{'':<12}PROFIT : {'{:.8f}'.format(maker_o.cex.executed_tobtc_s2):<10} - {'{:.8f}'.format(maker_o.cex.executed_tobtc_s1):<10} = {'{:.8f}'.format(maker_o.cex.executed_tobtc_s2 - maker_o.cex.executed_tobtc_s1):<10} = {'{:.2f}'.format(profit_percent * 100 - 100)} %"
                     print(msg1_dx + "\n" + msg2_s1 + "\n" + msg3_s2 + "\n" + msg4_pr)
-                    if profit_percent > settings.min_profit:
+                    if profit_percent > settings.min_profit + 1:
                         taker_logger.critical("\n" + msg1_dx + "\n" + msg2_s1 + "\n" + msg3_s2 + "\n" + msg4_pr)
                         print("profitable ARB!")
                         return True
@@ -714,7 +716,6 @@ def dx_set_addresses(coins_list):
                 coin.dex.active_address = settings.dx_addresses[coin.name]
             else:
                 result = xb.dx_call_getnewtokenadress(coin.name)
-                print(result)
                 if result:
                     coin.dex.active_address = result[0]
                     dx_settings_save_new_address(coin)
@@ -955,10 +956,10 @@ def execute_trade_pang(maker_o, taker_o, pang_o):
             exit()
     else:
         # DRY MODE
-        mess3 = ""
         mess1 = "dxtakerorder(" + maker_o.dex.order[2] + ", " + from_add + ", " + to_add + "), dry_mode: " + str(
             settings.dry_mode)
         print(mess1)
+        taker_logger.critical(mess1)
         if "SELL" in maker_o.amm.side:
             new_price = maker_o.amm.amount * (1 - settings.error_rate_mod)
             print(maker_o.amm.amount, new_price)
@@ -968,13 +969,14 @@ def execute_trade_pang(maker_o, taker_o, pang_o):
             print(maker_o.amm.amount, new_price)
             maker_o.amm.amount = new_price
 
-        pang_t = 'Swap {0}, {1}, {2}'.format(tokens[maker_o.name.lower()], maker_o.dex.maker_amount, tokens[taker_o.name.lower()])
+        value = int(maker_o.dex.maker_amount * 10000)
+        pang_t = 'Swap {0}, {1}, {2}'.format(tokens[maker_o.name.lower()], value, tokens[taker_o.name.lower()])
         print(pang_t)
+        pangolin_logger.info(pang_t)
         if pang_t:
             return True
 
         maker_o.dex.order_blacklist.append(maker_o.dex.order[2])
-        input('Pause 1000')
 
 
 def swap_pang(maker_o, taker_o, pang_o):
@@ -984,6 +986,8 @@ def swap_pang(maker_o, taker_o, pang_o):
     gwei = types.Wei(Web3.toWei(int(configfile.maxgweinumber), "gwei"))
     value = int(maker_o.dex.maker_amount*10000)
     try:
+        mess = f'Swap {tokens[maker_o.name.lower()]}, {tokens[taker_o.name.lower()]}, {value}'
+        pangolin_logger.info(mess)
         trade = pang_o.make_trade(contract_1, contract_2, value, gwei, settings.operator_address, settings.private_key)
         if trade:
             return True
