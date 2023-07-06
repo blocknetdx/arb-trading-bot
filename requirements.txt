@@ -1,5 +1,5 @@
 requests
-Flask
+Flask==2.0.3
 python-dateutil
 ccxt
-web3
+web3==5.28
